@@ -26,32 +26,32 @@ macro_rules! atom {
 macro_rules! logic {
     // Special cases: no `&` nor `|`
     ($arena:ident, $a:tt) => {
-        $crate::Logic::Atom(atom!($arena, $a))
+        $crate::Logic::Atom($crate::atom!($arena, $a))
     };
     ($arena:ident, ! $a:tt) => {
-        $crate::Logic::Atom(atom!($arena, ! $a))
+        $crate::Logic::Atom($crate::atom!($arena, ! $a))
     };
 
     ($arena:ident, $($x:tt)+) => {
-        logic!(@atom $arena []: $($x)+)
+        $crate::logic!(@atom $arena []: $($x)+)
     };
     (@atom $arena:ident [$($lhs:tt)*]: ! $a:tt $($x:tt)*) => {
-        logic!(@check $arena [$($lhs)*; logic!($arena, ! $a)]: $($x)*)
+        $crate::logic!(@check $arena [$($lhs)*; $crate::logic!($arena, ! $a)]: $($x)*)
     };
     (@atom $arena:ident [$($lhs:tt)*]: $a:tt $($x:tt)*) => {
-        logic!(@check $arena [$($lhs)*; logic!($arena, $a)]: $($x)*)
+        $crate::logic!(@check $arena [$($lhs)*; $crate::logic!($arena, $a)]: $($x)*)
     };
     (@check $arena:ident [; $lhs:expr; $op:ident; $rhs:expr]: $($x:tt)*) => {
-        logic!(@op $arena [; $crate::Logic::$op([$lhs, $rhs])]: $($x)*)
+        $crate::logic!(@op $arena [; $crate::Logic::$op([$lhs, $rhs])]: $($x)*)
     };
     (@check $arena:ident [; $lhs:expr]: $($x:tt)*) => {
-        logic!(@op $arena [; $lhs]: $($x)*)
+        $crate::logic!(@op $arena [; $lhs]: $($x)*)
     };
     (@op $arena:ident [; $lhs:expr]: & $($x:tt)+) => {
-        logic!(@atom $arena [; $lhs; and]: $($x)+)
+        $crate::logic!(@atom $arena [; $lhs; and]: $($x)+)
     };
     (@op $arena:ident [; $lhs:expr]: | $($x:tt)+) => {
-        logic!(@atom $arena [; $lhs; or]: $($x)+)
+        $crate::logic!(@atom $arena [; $lhs; or]: $($x)+)
     };
     (@op $arena:ident [; $lhs:expr]: ) => {
         $lhs
@@ -61,16 +61,16 @@ macro_rules! logic {
 #[macro_export]
 macro_rules! rule {
     ($arena:ident, $($x:tt)+) => {
-        rule!(@inner $arena []: $($x)+)
+        $crate::rule!(@inner $arena []: $($x)+)
     };
     (@inner $arena:ident [$($lhs:tt)*]: -> $($x:tt)+) => {
-        $crate::Rule::Implies(logic!($arena, $($lhs)*), logic!($arena, $($x)+))
+        $crate::Rule::Implies($crate::logic!($arena, $($lhs)*), $crate::logic!($arena, $($x)+))
     };
     (@inner $arena:ident [$($lhs:tt)*]: == $($x:tt)+) => {
-        $crate::Rule::Equals(logic!($arena, $($lhs)*), logic!($arena, $($x)+))
+        $crate::Rule::Equals($crate::logic!($arena, $($lhs)*), $crate::logic!($arena, $($x)+))
     };
     (@inner $arena:ident [$($lhs:tt)*]: $a:tt $($x:tt)+) => {
-        rule!(@inner $arena [$($lhs)* $a]: $($x)+)
+        $crate::rule!(@inner $arena [$($lhs)* $a]: $($x)+)
     };
 }
 
@@ -80,15 +80,15 @@ macro_rules! rules {
         [$($done),+]
     };
     (@inner $arena:ident [$($done:tt)*] [$($current:tt)+]: ; $($x:tt)*) => {
-        rules!(@inner $arena [$($done)*; rule!($arena, $($current)+)] []: $($x)*)
+        $crate::rules!(@inner $arena [$($done)*; $crate::rule!($arena, $($current)+)] []: $($x)*)
     };
     (@inner $arena:ident [$($done:tt)*] [$($current:tt)*]: $a:tt $($x:tt)+) => {
-        rules!(@inner $arena [$($done)*] [$($current)* $a]: $($x)+)
+        $crate::rules!(@inner $arena [$($done)*] [$($current)* $a]: $($x)+)
     };
     ($($x:tt)+) => {
         {
             let mut facts = $crate::Arena::new();
-            let rules = rules!(@inner facts [] []: $($x)+);
+            let rules = $crate::rules!(@inner facts [] []: $($x)+);
             $crate::Rules::new(facts, rules)
         }
     };
