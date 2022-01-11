@@ -71,6 +71,7 @@ macro_rules! rule {
     };
 }
 
+#[macro_export]
 macro_rules! rules {
     (@inner $arena:ident [$(; $done:expr)+] []: ) => {
         [$($done),+]
