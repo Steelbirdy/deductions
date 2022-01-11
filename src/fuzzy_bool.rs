@@ -1,7 +1,6 @@
 use std::cmp::Ordering;
 use std::{fmt, ops};
 
-// TODO: Tests
 #[derive(Debug, Copy, Clone, Hash)]
 pub enum FuzzyBool {
     False,
@@ -65,7 +64,10 @@ impl FuzzyBool {
     /// ```
     #[inline]
     pub const fn is_same(self, rhs: FuzzyBool) -> bool {
-        matches!((self, rhs), (True, True) | (False, False) | (Unknown, Unknown))
+        matches!(
+            (self, rhs),
+            (True, True) | (False, False) | (Unknown, Unknown)
+        )
     }
 
     /// Checks for equality of `FuzzyBool`s. Returns `Unknown` if either is `Unknown`.
@@ -475,5 +477,60 @@ mod tests {
         assert_fuzzy_eq!(F | U, U);
         assert_fuzzy_eq!(U | U, U);
         assert_fuzzy_eq!(T | F | U, T);
+    }
+
+    #[test]
+    fn test_fuzzy_xor() {
+        assert_fuzzy_eq!(T ^ T, F);
+        assert_fuzzy_eq!(T ^ F, T);
+        assert_fuzzy_eq!(T ^ U, U);
+        assert_fuzzy_eq!(F ^ F, F);
+        assert_fuzzy_eq!(F ^ U, U);
+        assert_fuzzy_eq!(U ^ U, U);
+        assert_fuzzy_eq!(T ^ F ^ U, U);
+    }
+
+    #[test]
+    fn test_kleene_implication() {
+        macro_rules! check {
+            ($a:ident -> $b:ident == $c:ident) => {
+                assert_fuzzy_eq!($a.kleene_implication($b), $c)
+            };
+        }
+
+        check!(T -> T == T);
+        check!(T -> F == F);
+        check!(T -> U == U);
+        check!(F -> F == T);
+        check!(F -> U == T);
+        check!(U -> U == U);
+    }
+
+    #[test]
+    fn test_lukasiewicz_implication() {
+        macro_rules! check {
+            ($a:ident -> $b:ident == $c:ident) => {
+                assert_fuzzy_eq!($a.lukasiewicz_implication($b), $c)
+            };
+        }
+
+        check!(T -> T == T);
+        check!(T -> F == F);
+        check!(T -> U == U);
+        check!(F -> F == T);
+        check!(F -> U == T);
+        check!(U -> U == T);
+    }
+
+    #[test]
+    fn test_fuzzy_compare() {
+        use Ordering::*;
+
+        assert_eq!(T.compare(T), Some(Equal));
+        assert_eq!(T.compare(F), Some(Greater));
+        assert_eq!(T.compare(U), None);
+        assert_eq!(F.compare(F), Some(Equal));
+        assert_eq!(F.compare(U), None);
+        assert_eq!(U.compare(U), None);
     }
 }

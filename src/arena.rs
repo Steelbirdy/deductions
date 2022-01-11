@@ -83,7 +83,6 @@ impl<T> Hash for Id<T> {
     }
 }
 
-// TODO: Tests
 pub struct Arena<T> {
     arena_id: ArenaId,
     items: IndexSet<T>,

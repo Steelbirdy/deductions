@@ -409,9 +409,6 @@ impl<T: Eq + Hash> CheckedRules<T> {
             }
         }
 
-        dbg!(&p.alpha_rules);
-        dbg!(&p.beta_rules);
-
         let (alpha_rules, beta) = p.into_rules();
 
         // deduce alpha implications
@@ -952,6 +949,54 @@ mod tests {
         let f = CheckedRules::str_from_str(["!z == nz"]).unwrap();
         let [z, nz] = vars!(f, "z", "nz");
         assert_eq!(f.prereqs, alpha_map!(z => [nz], nz => [z]));
+
+        #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+        enum IntType {
+            Pos,
+            Neg,
+            Zero,
+            NonPos,
+            NonNeg,
+            NonZero,
+        }
+        use IntType::*;
+
+        impl FromStr for IntType {
+            type Err = String;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                Ok(match s {
+                    "pos" => Pos,
+                    "neg" => Neg,
+                    "zero" => Zero,
+                    "npos" => NonPos,
+                    "nneg" => NonNeg,
+                    "nzero" => NonZero,
+                    _ => return Err(s.to_string()),
+                })
+            }
+        }
+
+        let f = CheckedRules::<IntType>::from_str([
+            "neg == npos & nzero",
+            "pos == nneg & nzero",
+            "zero == nneg & npos",
+        ])
+        .unwrap();
+
+        let [pos, neg, zero, npos, nneg, nzero] = vars!(f, Pos, Neg, Zero, NonPos, NonNeg, NonZero);
+
+        assert_eq!(
+            f.prereqs,
+            alpha_map!(
+                neg => [npos, nzero],
+                pos => [nneg, nzero],
+                zero => [nneg, npos],
+                npos => [neg, zero],
+                nneg => [pos, zero],
+                nzero => [neg, pos],
+            )
+        );
     }
 
     #[test]
@@ -1064,9 +1109,6 @@ mod tests {
     #[test]
     fn test_fact_rules_deduce_multiple_2() {
         let f = CheckedRules::str_from_str(["real == neg | zero | pos"]).unwrap();
-
-        dbg!(&f.alpha_rules);
-        dbg!(&f.beta_rules);
 
         let [real, neg, zero, pos] = vars!(f, "real", "neg", "zero", "pos");
 

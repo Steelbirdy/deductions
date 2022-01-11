@@ -1,3 +1,5 @@
+// TODO: Tests
+
 macro_rules! atom {
     ($arena:ident, $a:ident) => {
         $crate::Atom::new($arena.insert($a), true)

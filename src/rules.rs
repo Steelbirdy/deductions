@@ -1,8 +1,6 @@
 use crate::{Arena, Logic};
 use std::hash::Hash;
 
-// TODO: Tests for macros
-
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Rule<T> {
     Implies(Logic<T>, Logic<T>),

@@ -4,7 +4,6 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::ops;
 
-// TODO: Tests
 pub enum Logic<T> {
     Atom(Atom<T>),
     Bool(FuzzyBool),
@@ -13,6 +12,9 @@ pub enum Logic<T> {
 }
 
 impl<T> Logic<T> {
+    pub const TRUE: Self = Logic::Bool(FuzzyBool::True);
+    pub const FALSE: Self = Logic::Bool(FuzzyBool::False);
+
     pub fn and(args: impl IntoIterator<Item = Logic<T>>) -> Self {
         And::new(args).simplify()
     }
@@ -21,15 +23,15 @@ impl<T> Logic<T> {
         Or::new(args).simplify()
     }
 
-    fn ord_atoms_first(&self, other: &Self) -> Ordering {
+    fn cmp_atoms_first(&self, other: &Self) -> Ordering {
         use Logic::*;
 
         match (self, other) {
             (Atom(x), Atom(y)) => x.cmp(y),
             (Atom(_), _) => Ordering::Less,
             (Bool(_), Atom(_)) => Ordering::Greater,
-            (And(x), And(y)) => x.ord_atoms_first(y),
-            (Or(x), Or(y)) => x.ord_atoms_first(y),
+            (And(x), And(y)) => x.cmp_atoms_first(y),
+            (Or(x), Or(y)) => x.cmp_atoms_first(y),
             // The rest is arbitrary because we only care about `Atom`s being first.
             (Bool(x), Bool(y)) => x.partial_cmp(y).unwrap_or(Ordering::Equal),
             (Bool(_), _) | (And(_), Or(_)) => Ordering::Less,
@@ -59,7 +61,6 @@ impl<T> Logic<T> {
 
         match self {
             And(x) => x.expand(),
-            Or(x) => x.expand(),
             _ => self,
         }
     }
@@ -153,43 +154,6 @@ macro_rules! and_or_impl {
         }
 
         impl<T> $Name<Logic<T>> {
-            pub fn expand(mut self) -> Logic<T> {
-                if let Some(idx) = self.0.iter().position(|x| matches!(x, Logic::$Other(_))) {
-                    // This doesn't matter because AND and OR are commutative.
-                    let arg = self.0.swap_remove(idx);
-
-                    let arg = match arg {
-                        Logic::$Other(a) => a,
-                        _ => unreachable!("already checked"),
-                    };
-
-                    let terms = arg.0.into_iter().map(|a| {
-                        let mut new_args = self.0.clone();
-                        new_args.push(a);
-                        $Name::new(new_args).expand()
-                    });
-
-                    let ret = $Other::new(terms);
-                    ret.simplify()
-                } else {
-                    Logic::$Name(self)
-                }
-            }
-
-            pub fn try_into_atoms(self) -> Option<$Name<Atom<T>>> {
-                self.0
-                    .into_iter()
-                    .try_fold(Vec::new(), |mut ret, b| {
-                        if let Logic::Atom(b) = b {
-                            ret.push(b);
-                            Some(ret)
-                        } else {
-                            None
-                        }
-                    })
-                    .map($Name::new)
-            }
-
             fn flatten(&mut self) {
                 let mut i = 0;
                 while let Some(arg) = self.0.get(i) {
@@ -211,34 +175,31 @@ macro_rules! and_or_impl {
                 self.flatten();
 
                 let mut found = false;
-                self.0.retain(|x| {
-                    if found {
-                        false
-                    } else {
-                        match x {
-                            Logic::Bool($ShortCircuit) => false,
-                            Logic::Bool($OtherBool) => {
-                                found = true;
-                                true
-                            }
-                            _ => true,
-                        }
+                self.0.retain(|x| match x {
+                    Logic::Bool($ShortCircuit) => {
+                        found = true;
+                        true
                     }
+                    Logic::Bool($OtherBool) => false,
+                    _ => !found,
                 });
 
-                if self.0.is_empty() {
+                if found {
                     return Logic::Bool($ShortCircuit);
+                } else if self.0.is_empty() {
+                    return Logic::Bool($OtherBool);
                 } else if self.0.len() == 1 {
                     return self.0.pop().unwrap();
                 }
 
-                self.0.sort_by(|x, y| x.ord_atoms_first(y));
+                self.0.sort_by(|x, y| x.cmp_atoms_first(y));
+                self.0.dedup();
 
                 for w in self.0.windows(2) {
                     match w {
                         [Logic::Atom(a), Logic::Atom(b)] => {
                             if *a == !*b {
-                                return Logic::Bool($OtherBool);
+                                return Logic::Bool($ShortCircuit);
                             }
                         }
                         _ => break,
@@ -248,10 +209,10 @@ macro_rules! and_or_impl {
                 Logic::$Name(self)
             }
 
-            fn ord_atoms_first(&self, other: &Self) -> Ordering {
+            fn cmp_atoms_first(&self, other: &Self) -> Ordering {
                 let mut iter = self.0.iter().zip(&other.0);
                 while let Some((a, b)) = iter.next() {
-                    match a.ord_atoms_first(b) {
+                    match a.cmp_atoms_first(b) {
                         Ordering::Equal => continue,
                         x => return x,
                     }
@@ -282,3 +243,160 @@ macro_rules! and_or_impl {
 
 and_or_impl!(And, Or, False, True);
 and_or_impl!(Or, And, True, False);
+
+impl<T> And<Logic<T>> {
+    pub fn expand(mut self) -> Logic<T> {
+        let idx = match self.0.iter().position(|x| matches!(x, Logic::Or(_))) {
+            Some(x) => x,
+            None => return Logic::And(self),
+        };
+
+        let arg = self.0.swap_remove(idx);
+        let arg = match arg {
+            Logic::Or(a) => a,
+            _ => unreachable!("already checked"),
+        };
+
+        let terms = arg
+            .0
+            .into_iter()
+            .map(|a| Logic::and(self.0.iter().cloned().chain(std::iter::once(a))))
+            .map(Logic::expand);
+
+        let ret = Or::new(terms);
+        ret.simplify()
+    }
+
+    pub fn try_into_atoms(self) -> Option<And<Atom<T>>> {
+        self.0
+            .into_iter()
+            .try_fold(Vec::new(), |mut ret, b| {
+                if let Logic::Atom(b) = b {
+                    ret.push(b);
+                    Some(ret)
+                } else {
+                    None
+                }
+            })
+            .map(And::new)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_simplify() {
+        const T: Logic<()> = Logic::TRUE;
+        const F: Logic<()> = Logic::FALSE;
+
+        // And[] -> True
+        // Or[]  -> False
+        assert_eq!(Logic::and([]), T);
+        assert_eq!(Logic::or([]), F);
+
+        // And[a] -> a
+        // Or[a]  -> a
+        assert_eq!(Logic::and([T]), T);
+        assert_eq!(Logic::and([F]), F);
+        assert_eq!(Logic::or([T]), T);
+        assert_eq!(Logic::or([F]), F);
+
+        let mut arena = crate::Arena::new();
+        let [a, b, c, d] = fill_arena!(arena, "a", "b", "c", "d");
+
+        fn at(a: Atom<&str>) -> Logic<&str> {
+            Logic::Atom(a)
+        }
+
+        // And[a, !a] -> False
+        // Or[a, !a]  -> True
+        assert_eq!(Logic::and([a, !a].map(at)), Logic::FALSE);
+        assert_eq!(Logic::or([a, !a].map(at)), Logic::TRUE);
+
+        assert_eq!(Logic::and([F, F]), F);
+        assert_eq!(Logic::and([F, T]), F);
+        assert_eq!(Logic::and([T, F]), F);
+        assert_eq!(Logic::and([T, T]), T);
+
+        assert_eq!(Logic::or([F, F]), F);
+        assert_eq!(Logic::or([F, T]), T);
+        assert_eq!(Logic::or([T, F]), T);
+        assert_eq!(Logic::or([T, T]), T);
+
+        // And[a, True]  -> a
+        // And[a, False] -> False
+        // Or[a, True]   -> True
+        // Or[a, False]  -> a
+        assert_eq!(Logic::and([at(a), Logic::TRUE]), at(a));
+        assert_eq!(Logic::and([at(a), Logic::FALSE]), Logic::FALSE);
+        assert_eq!(Logic::or([at(a), Logic::TRUE]), Logic::TRUE);
+        assert_eq!(Logic::or([at(a), Logic::FALSE]), at(a));
+
+        // And[a,b,a] -> And[a,b]
+        // Or[a,b,a]  -> Or[a,b]
+        assert_eq!(Logic::and([a, b, a].map(at)), Logic::and([a, b].map(at)));
+        assert_eq!(Logic::or([a, b, a].map(at)), Logic::or([a, b].map(at)));
+
+        // And[And[a,b], And[c,d]] -> And[a,b,c,d]
+        // Or[Or[a,b], Or[c,d]]    -> Or[a,b,c,d]
+        assert_eq!(
+            Logic::and([Logic::and([a, b].map(at)), Logic::and([c, d].map(at))]),
+            Logic::and([a, b, c, d].map(at)),
+        );
+        assert_eq!(
+            Logic::or([Logic::or([a, b].map(at)), Logic::or([c, d].map(at))]),
+            Logic::or([a, b, c, d].map(at)),
+        );
+
+        assert_eq!(
+            Logic::or([
+                at(a),
+                Logic::and([b, c, d].map(at)),
+                Logic::and([b, d].map(at)),
+                Logic::and([b, c, d].map(at)),
+                at(a),
+                Logic::and([b, d].map(at)),
+            ]),
+            Logic::or([
+                at(a),
+                Logic::and([b, c, d].map(at)),
+                Logic::and([b, d].map(at))
+            ]),
+        );
+    }
+
+    #[test]
+    fn test_expand() {
+        let mut arena = crate::Arena::new();
+        let [a, b, c, d] = fill_arena!(arena, "a", "b", "c", "d");
+
+        fn at(a: Atom<&str>) -> Logic<&str> {
+            Logic::Atom(a)
+        }
+
+        let t = Logic::and([Logic::or([a, b].map(at)), at(c)]);
+        assert_eq!(
+            t.expand(),
+            Logic::or([
+                Logic::And(And::new([a, c].map(at))),
+                Logic::And(And::new([b, c].map(at)))
+            ])
+        );
+
+        let t = Logic::and([Logic::or([a, !b].map(at)), at(b)]);
+        assert_eq!(t.expand(), Logic::And(And::new([a, b].map(at))));
+
+        let t = Logic::and([Logic::or([a, b].map(at)), Logic::or([c, d].map(at))]);
+        assert_eq!(
+            t.expand(),
+            Logic::Or(Or::new([
+                Logic::And(And::new([a, c].map(at))),
+                Logic::And(And::new([a, d].map(at))),
+                Logic::And(And::new([b, c].map(at))),
+                Logic::And(And::new([b, d].map(at))),
+            ]))
+        );
+    }
+}
