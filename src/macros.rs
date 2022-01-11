@@ -1,5 +1,6 @@
 // TODO: Tests
 
+#[macro_export]
 macro_rules! atom {
     ($arena:ident, $a:ident) => {
         $crate::Atom::new($arena.insert($a), true)
@@ -21,6 +22,7 @@ macro_rules! atom {
     };
 }
 
+#[macro_export]
 macro_rules! logic {
     // Special cases: no `&` nor `|`
     ($arena:ident, $a:tt) => {
@@ -56,6 +58,7 @@ macro_rules! logic {
     };
 }
 
+#[macro_export]
 macro_rules! rule {
     ($arena:ident, $($x:tt)+) => {
         rule!(@inner $arena []: $($x)+)
@@ -71,6 +74,7 @@ macro_rules! rule {
     };
 }
 
+#[macro_export]
 macro_rules! rules {
     (@inner $arena:ident [$(; $done:expr)+] []: ) => {
         [$($done),+]
