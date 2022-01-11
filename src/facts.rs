@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use crate::{And, Arena, Atom, FuzzyBool, Id, Logic, Rules};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -371,7 +372,7 @@ impl<T: Eq + Hash> Prover<T> {
 
 #[derive(Clone)]
 pub struct CheckedRules<T> {
-    defined_facts: Arena<T>,
+    pub(crate) defined_facts: Arena<T>,
     alpha_rules: AlphaRules<T>,
     beta_rules: Vec<BetaImplication<T>>,
     beta_triggers: BetaTriggers<T>,
@@ -432,6 +433,7 @@ impl<T: Eq + Hash> TryFrom<Rules<T>> for CheckedRules<T> {
     }
 }
 
+#[derive(Eq, PartialEq)]
 pub struct InconsistentAssumptions<T> {
     kb: String,
     fact_id: Id<T>,
@@ -468,21 +470,22 @@ impl<'a, T> FactKB<'a, T> {
         }
     }
 
-    fn get(&self, id: &Id<T>) -> Option<FuzzyBool> {
-        self.kb.get(id).copied()
+    pub fn get<B: Borrow<Id<T>>>(&self, id: &B) -> Option<FuzzyBool> {
+        self.kb.get(id.borrow()).copied()
     }
 
     /// Add fact k=v to the knowledge base.
     ///
     /// Returns `true` if the KB was updated, `false` otherwise.
-    pub fn tell(
+    pub fn tell<B: Borrow<Id<T>>>(
         &mut self,
-        id: Id<T>,
-        truth_value: FuzzyBool,
+        id: &B,
+        truth_value: impl Into<FuzzyBool>,
     ) -> Result<bool, InconsistentAssumptions<T>> {
-        let should_update = self.tell_no_update(id, truth_value)?;
+        let truth_value = truth_value.into();
+        let should_update = self.tell_no_update(id.borrow(), truth_value)?;
         if should_update {
-            self.kb.insert(id, truth_value);
+            self.kb.insert(*id.borrow(), truth_value);
         }
         Ok(should_update)
     }
@@ -502,7 +505,7 @@ impl<'a, T> FactKB<'a, T> {
 
         while !facts.is_empty() {
             for (k, v) in facts.drain(..) {
-                let v = if !self.tell(k, v)? || v.is_unknown() {
+                let v = if !self.tell(&k, v)? || v.is_unknown() {
                     continue;
                 } else {
                     match v.as_bool() {
@@ -516,7 +519,7 @@ impl<'a, T> FactKB<'a, T> {
                 if let Some(implies) = self.rules.alpha_rules.get(&atom) {
                     for x in implies {
                         let (id, truth) = x.into_fuzzy_pair();
-                        if self.tell_no_update(id, truth)? {
+                        if self.tell_no_update(&id, truth)? {
                             to_update.push(*x);
                         }
                     }
@@ -548,15 +551,15 @@ impl<'a, T> FactKB<'a, T> {
         Ok(())
     }
 
-    fn tell_no_update(&self, k: Id<T>, v: FuzzyBool) -> Result<bool, InconsistentAssumptions<T>> {
-        match self.get(&k) {
+    fn tell_no_update(&self, k: &Id<T>, v: FuzzyBool) -> Result<bool, InconsistentAssumptions<T>> {
+        match self.get(k) {
             Some(b) if !b.is_unknown() => {
                 if b.is_same(v) {
                     Ok(false)
                 } else {
                     Err(InconsistentAssumptions {
                         kb: format!("{:?}", self),
-                        fact_id: k,
+                        fact_id: *k,
                         value: v,
                     })
                 }
@@ -871,17 +874,17 @@ mod tests {
         };
     }
 
-    macro_rules! vars {
-        ($f:ident, $($s:expr),* $(,)?) => {
-            [$(Atom::new($f.get_id($s), true)),*]
-        };
-    }
-
-    impl<T: Eq + Hash> CheckedRules<T> {
-        fn get_id(&self, x: T) -> Id<T> {
-            self.defined_facts.get_id_of(&x).unwrap()
-        }
-    }
+    // macro_rules! vars {
+    //     ($f:ident, $($s:expr),* $(,)?) => {
+    //         [$(Atom::new($f.get_id($s), true)),*]
+    //     };
+    // }
+    //
+    // impl<T: Eq + Hash> CheckedRules<T> {
+    //     fn get_id(&self, x: T) -> Id<T> {
+    //         self.defined_facts.get_id_of(&x).unwrap()
+    //     }
+    // }
 
     #[test]
     fn test_fact_rules_parse() {
@@ -1132,11 +1135,11 @@ mod tests {
 
         // verify that static beta-extensions deduction takes place
         let f = CheckedRules::try_from(rules![
-            Real   == Neg | Zero | Pos;
-            Neg    -> Real & !Zero & !Pos;
-            Pos    -> Real & !Zero & !Neg;
-            NonNeg == Real & !Neg;
-            NonPos == Real & !Pos;
+            [Real   == Neg | Zero | Pos]
+            [Neg    -> Real & !Zero & !Pos]
+            [Pos    -> Real & !Zero & !Neg]
+            [NonNeg == Real & !Neg]
+            [NonPos == Real & !Pos]
         ])
         .unwrap();
 

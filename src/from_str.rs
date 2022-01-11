@@ -448,12 +448,14 @@ pub mod atom {
                 Atom::<NumberType>::from_str(arena, s).unwrap()
             };
 
-            assert_eq!(parse(arena, "real"), atom!(arena, Real));
-            assert_eq!(parse(arena, "!real"), atom!(arena, !Real));
-            assert_eq!(parse(arena, "rational"), atom!(arena, Rational));
-            assert_eq!(parse(arena, "!rational"), atom!(arena, !Rational));
-            assert_eq!(parse(arena, "integer"), atom!(arena, Integer));
-            assert_eq!(parse(arena, "!integer"), atom!(arena, !Integer));
+            let [real, rational, integer] = fill_arena!(arena, Real, Rational, Integer);
+
+            assert_eq!(parse(arena, "real"), real);
+            assert_eq!(parse(arena, "!real"), !real);
+            assert_eq!(parse(arena, "rational"), rational);
+            assert_eq!(parse(arena, "!rational"), !rational);
+            assert_eq!(parse(arena, "integer"), integer);
+            assert_eq!(parse(arena, "!integer"), !integer);
         }
     }
 }
