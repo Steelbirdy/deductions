@@ -438,6 +438,8 @@ forward_ref_impl!(impl BitXor, bitxor for bool, FuzzyBool);
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::eq_op)]
+
     use super::*;
 
     macro_rules! assert_fuzzy_eq {

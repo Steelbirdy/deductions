@@ -1,4 +1,4 @@
-use crate::{Arena, Logic};
+use crate::{Arena, CheckedRules, Inconsistent, Logic};
 use std::hash::Hash;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -29,6 +29,12 @@ impl<T> Rules<T> {
             facts,
             rules: rules.into_iter().collect(),
         }
+    }
+}
+
+impl<T: Eq + Hash> Rules<T> {
+    pub fn check(self) -> Result<CheckedRules<T>, Inconsistent> {
+        self.try_into()
     }
 }
 

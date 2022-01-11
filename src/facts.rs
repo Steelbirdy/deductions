@@ -1,4 +1,4 @@
-use crate::{from_str::rule::ParseRuleError, And, Arena, Atom, FuzzyBool, Id, Logic, Rule, Rules};
+use crate::{And, Arena, Atom, FuzzyBool, Id, Logic, Rules};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::hash::Hash;
@@ -378,32 +378,12 @@ pub struct CheckedRules<T> {
     prereqs: AlphaRules<T>,
 }
 
-#[derive(Debug)]
-pub enum ParseCheckedRulesError<E> {
-    Inconsistent,
-    ParseRule(ParseRuleError<E>),
-}
-
-impl<E> From<Inconsistent> for ParseCheckedRulesError<E> {
-    fn from(_: Inconsistent) -> Self {
-        Self::Inconsistent
-    }
-}
-
-impl<E> From<ParseRuleError<E>> for ParseCheckedRulesError<E> {
-    fn from(err: ParseRuleError<E>) -> Self {
-        Self::ParseRule(err)
-    }
-}
-
 impl<T: Eq + Hash> CheckedRules<T> {
-    pub fn new(
-        facts: Arena<T>,
-        rules: impl IntoIterator<Item = Rule<T>>,
-    ) -> Result<Self, Inconsistent> {
+    pub fn new(rules: Rules<T>) -> Result<Self, Inconsistent> {
         let mut p = Prover::new();
+        let facts = rules.facts;
 
-        for rule in rules {
+        for rule in rules.rules {
             for (a, b) in rule.into_implications() {
                 p.process_rule(a, b);
             }
@@ -448,37 +428,7 @@ impl<T: Eq + Hash> TryFrom<Rules<T>> for CheckedRules<T> {
     type Error = Inconsistent;
 
     fn try_from(rules: Rules<T>) -> Result<Self, Self::Error> {
-        Self::new(rules.facts, rules.rules)
-    }
-}
-
-impl<T: Eq + Hash + FromStr> CheckedRules<T> {
-    pub fn from_str<'a>(
-        rules: impl IntoIterator<Item = &'a str>,
-    ) -> Result<Self, ParseCheckedRulesError<T::Err>> {
-        let mut arena = Arena::new();
-
-        let rules: Vec<_> = rules
-            .into_iter()
-            .map(|r| Rule::<T>::from_str(&mut arena, r))
-            .collect::<Result<_, _>>()?;
-
-        Self::new(arena, rules).map_err(Into::into)
-    }
-}
-
-impl<'a> CheckedRules<&'a str> {
-    pub fn str_from_str(
-        rules: impl IntoIterator<Item = &'a str>,
-    ) -> Result<Self, ParseCheckedRulesError<std::convert::Infallible>> {
-        let mut arena = Arena::new();
-
-        let rules: Vec<_> = rules
-            .into_iter()
-            .map(|r| Rule::str_from_str(&mut arena, r))
-            .collect::<Result<_, _>>()?;
-
-        Self::new(arena, rules).map_err(Into::into)
+        Self::new(rules)
     }
 }
 
@@ -916,6 +866,12 @@ mod tests {
         );
     }
 
+    macro_rules! checked_rules {
+        ($($x:tt)+) => {
+            CheckedRules::try_from(Rules::str_from_str($($x)+).unwrap())
+        };
+    }
+
     macro_rules! vars {
         ($f:ident, $($s:expr),* $(,)?) => {
             [$(Atom::new($f.get_id($s), true)),*]
@@ -930,23 +886,23 @@ mod tests {
 
     #[test]
     fn test_fact_rules_parse() {
-        let f = CheckedRules::str_from_str(["a -> b"]).unwrap();
+        let f = checked_rules!(["a -> b"]).unwrap();
         let [a, b] = vars!(f, "a", "b");
         assert_eq!(f.prereqs, alpha_map!(b => [a], a => [b]));
 
-        let f = CheckedRules::str_from_str(["a -> !b"]).unwrap();
+        let f = checked_rules!(["a -> !b"]).unwrap();
         let [a, b] = vars!(f, "a", "b");
         assert_eq!(f.prereqs, alpha_map!(b => [a], a => [b]));
 
-        let f = CheckedRules::str_from_str(["!a -> b"]).unwrap();
+        let f = checked_rules!(["!a -> b"]).unwrap();
         let [a, b] = vars!(f, "a", "b");
         assert_eq!(f.prereqs, alpha_map!(b => [a], a => [b]));
 
-        let f = CheckedRules::str_from_str(["!a -> !b"]).unwrap();
+        let f = checked_rules!(["!a -> !b"]).unwrap();
         let [a, b] = vars!(f, "a", "b");
         assert_eq!(f.prereqs, alpha_map!(b => [a], a => [b]));
 
-        let f = CheckedRules::str_from_str(["!z == nz"]).unwrap();
+        let f = checked_rules!(["!z == nz"]).unwrap();
         let [z, nz] = vars!(f, "z", "nz");
         assert_eq!(f.prereqs, alpha_map!(z => [nz], nz => [z]));
 
@@ -977,12 +933,13 @@ mod tests {
             }
         }
 
-        let f = CheckedRules::<IntType>::from_str([
+        let f = Rules::<IntType>::from_str([
             "neg == npos & nzero",
             "pos == nneg & nzero",
             "zero == nneg & npos",
         ])
         .unwrap();
+        let f = CheckedRules::new(f).unwrap();
 
         let [pos, neg, zero, npos, nneg, nzero] = vars!(f, Pos, Neg, Zero, NonPos, NonNeg, NonZero);
 
@@ -1002,7 +959,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_fact_rules_parse_err() {
-        let _ = CheckedRules::str_from_str(["a -> !a"]).unwrap();
+        let _ = checked_rules!(["a -> !a"]).unwrap();
     }
 
     macro_rules! assert_fuzzy_eq {
@@ -1028,7 +985,7 @@ mod tests {
 
     #[test]
     fn test_fact_rules_deduce() {
-        let f = CheckedRules::str_from_str(["a -> b", "b -> c", "b -> d", "c -> e"]).unwrap();
+        let f = checked_rules!(["a -> b", "b -> c", "b -> d", "c -> e"]).unwrap();
 
         let [a, b, c, d, e] = vars!(f, "a", "b", "c", "d", "e");
 
@@ -1060,7 +1017,7 @@ mod tests {
     #[test]
     fn test_fact_rules_deduce_2() {
         // pos/neg/zero, but rules are insufficient to derive all relations
-        let f = CheckedRules::str_from_str(["pos -> !neg", "pos -> !z"]).unwrap();
+        let f = checked_rules!(["pos -> !neg", "pos -> !z"]).unwrap();
 
         let [pos, neg, z] = vars!(f, "pos", "neg", "z");
 
@@ -1072,9 +1029,7 @@ mod tests {
         assert_deduced!(f, [!z] -> [!z]);
 
         // pos/neg/zero, rules are sufficient to derive all relations
-        let f =
-            CheckedRules::str_from_str(["pos -> !neg", "neg -> !pos", "pos -> !z", "neg -> !z"])
-                .unwrap();
+        let f = checked_rules!(["pos -> !neg", "neg -> !pos", "pos -> !z", "neg -> !z"]).unwrap();
 
         let [pos, neg, z] = vars!(f, "pos", "neg", "z");
 
@@ -1088,7 +1043,7 @@ mod tests {
 
     #[test]
     fn test_fact_rules_deduce_multiple() {
-        let f = CheckedRules::str_from_str(["real == pos | npos"]).unwrap();
+        let f = checked_rules!(["real == pos | npos"]).unwrap();
 
         let [real, pos, npos] = vars!(f, "real", "pos", "npos");
 
@@ -1108,7 +1063,7 @@ mod tests {
 
     #[test]
     fn test_fact_rules_deduce_multiple_2() {
-        let f = CheckedRules::str_from_str(["real == neg | zero | pos"]).unwrap();
+        let f = checked_rules!(["real == neg | zero | pos"]).unwrap();
 
         let [real, neg, zero, pos] = vars!(f, "real", "neg", "zero", "pos");
 
@@ -1136,7 +1091,7 @@ mod tests {
     #[test]
     fn test_fact_rules_deduce_base() {
         // deduction that starts from base
-        let f = CheckedRules::str_from_str([
+        let f = checked_rules!([
             "real  == neg | zero | pos",
             "neg   -> real & !zero & !pos",
             "pos   -> real & !zero & !neg",

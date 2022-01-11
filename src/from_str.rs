@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 #[cfg(test)]
 #[macro_use]
-mod tests {
+mod test_utils {
     use super::*;
 
     #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -36,6 +36,38 @@ mod tests {
                 "infinite" => Self::Infinite,
                 _ => return Err(s.to_string()),
             })
+        }
+    }
+}
+
+pub mod rules {
+    use super::{rule::ParseRuleError, *};
+    use crate::{Rule, Rules};
+
+    impl<T: Eq + Hash + FromStr> Rules<T> {
+        #[allow(clippy::should_implement_trait)]
+        pub fn from_str<'a>(
+            rules: impl IntoIterator<Item = &'a str>,
+        ) -> Result<Self, ParseRuleError<T::Err>> {
+            let mut arena = Arena::new();
+            let rules: Vec<_> = rules
+                .into_iter()
+                .map(|s| Rule::from_str(&mut arena, s))
+                .collect::<Result<_, _>>()?;
+            Ok(Rules::new(arena, rules))
+        }
+    }
+
+    impl<'a> Rules<&'a str> {
+        pub fn str_from_str(
+            rules: impl IntoIterator<Item = &'a str>,
+        ) -> Result<Self, ParseRuleError<std::convert::Infallible>> {
+            let mut arena = Arena::new();
+            let rules: Vec<_> = rules
+                .into_iter()
+                .map(|s| Rule::str_from_str(&mut arena, s))
+                .collect::<Result<_, _>>()?;
+            Ok(Rules::new(arena, rules))
         }
     }
 }
@@ -147,7 +179,7 @@ pub mod rule {
 
     #[cfg(test)]
     mod tests {
-        use super::super::tests::NumberType;
+        use super::super::test_utils::NumberType;
         use super::*;
 
         #[test]
@@ -298,7 +330,7 @@ pub mod logic {
 
     #[cfg(test)]
     mod tests {
-        use super::super::tests::NumberType;
+        use super::super::test_utils::NumberType;
         use super::*;
 
         #[test]
@@ -403,7 +435,7 @@ pub mod atom {
 
     #[cfg(test)]
     mod tests {
-        use super::super::tests::NumberType;
+        use super::super::test_utils::NumberType;
         use super::*;
 
         #[test]

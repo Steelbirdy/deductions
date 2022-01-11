@@ -14,6 +14,7 @@ mod rules;
 
 pub use arena::{Arena, Id};
 pub use atom::Atom;
+pub use facts::{CheckedRules, FactKB, Inconsistent, InconsistentAssumptions};
 pub use fuzzy_bool::FuzzyBool;
 pub use logic::{And, Logic, Or};
 pub use rules::{Rule, Rules};
