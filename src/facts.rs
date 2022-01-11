@@ -455,14 +455,13 @@ impl<T> fmt::Display for InconsistentAssumptions<T> {
 }
 
 /// A simple propositional knowledge base relying on compiled inference rules.
-/// TODO: `rules` by reference?
-pub struct FactKB<T> {
-    rules: CheckedRules<T>,
+pub struct FactKB<'a, T> {
+    rules: &'a CheckedRules<T>,
     kb: HashMap<Id<T>, FuzzyBool>,
 }
 
-impl<T> FactKB<T> {
-    pub fn new(rules: CheckedRules<T>) -> Self {
+impl<'a, T> FactKB<'a, T> {
+    pub fn new(rules: &'a CheckedRules<T>) -> Self {
         Self {
             rules,
             kb: HashMap::new(),
@@ -567,7 +566,7 @@ impl<T> FactKB<T> {
     }
 }
 
-impl<T> fmt::Debug for FactKB<T> {
+impl<T> fmt::Debug for FactKB<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("{\n")?;
         for (k, v) in &self.kb {
@@ -976,7 +975,7 @@ mod tests {
     macro_rules! assert_deduced {
         ($f:ident, [$($a:expr),*] -> [$($b:expr),*]) => {
             {
-                let mut kb = FactKB::new($f.clone());
+                let mut kb = FactKB::new(&$f);
                 kb.deduce_all_facts([$($a),*].map(Atom::into_fuzzy_pair)).unwrap();
                 assert_fuzzy_eq!(kb.kb, HashMap::from([$($b),*].map(Atom::into_fuzzy_pair)));
             }
@@ -990,7 +989,7 @@ mod tests {
         let [a, b, c, d, e] = vars!(f, "a", "b", "c", "d", "e");
 
         fn doit<'a>(
-            f: CheckedRules<&'a str>,
+            f: &CheckedRules<&'a str>,
             facts: impl IntoIterator<Item = (Id<&'a str>, FuzzyBool)>,
         ) -> Result<HashMap<Id<&'a str>, FuzzyBool>, InconsistentAssumptions<&'a str>> {
             let mut kb = FactKB::new(f);
@@ -1009,7 +1008,7 @@ mod tests {
         assert_deduced!(f, [!d] -> [!a, !b, !d]);
 
         assert_fuzzy_eq!(
-            doit(f.clone(), [(f.get_id("a"), FuzzyBool::Unknown)]).unwrap(),
+            doit(&f, [(f.get_id("a"), FuzzyBool::Unknown)]).unwrap(),
             HashMap::from([(f.get_id("a"), FuzzyBool::Unknown)])
         );
     }
@@ -1100,7 +1099,7 @@ mod tests {
 
         let [real, neg, zero, pos] = vars!(f, "real", "neg", "zero", "pos");
 
-        let mut base = FactKB::new(f.clone());
+        let mut base = FactKB::new(&f);
 
         base.deduce_all_facts([real, !neg].map(Atom::into_fuzzy_pair))
             .unwrap();
