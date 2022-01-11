@@ -41,7 +41,7 @@ macro_rules! rules {
     (@logic_op $arena:ident [; $lhs:expr]: ) => {
         $lhs
     };
-    
+
     ($([$($x:tt)+])+) => {
         {
             let mut facts = $crate::Arena::new();
@@ -53,8 +53,6 @@ macro_rules! rules {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
     pub enum Assumption {
         Commutative,
@@ -88,8 +86,8 @@ mod tests {
         ExtendedNonPositive,
         ExtendedNonZero,
     }
-    use Assumption::*;
     use crate::{CheckedRules, FactKB};
+    use Assumption::*;
 
     #[test]
     fn test_large_input() {
@@ -156,7 +154,8 @@ mod tests {
         let [real, integer, imaginary] = vars!(checked, Real, Integer, Imaginary);
 
         let mut kb = FactKB::new(&checked);
-        kb.deduce_all_facts([real, integer].map(crate::Atom::into_fuzzy_pair)).unwrap();
+        kb.deduce_all_facts([real, integer].map(crate::Atom::into_fuzzy_pair))
+            .unwrap();
 
         assert_eq!(kb.get(&imaginary), Some(false.into()));
     }

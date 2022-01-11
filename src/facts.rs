@@ -1,5 +1,5 @@
-use std::borrow::Borrow;
 use crate::{And, Arena, Atom, FuzzyBool, Id, Logic, Rules};
+use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::hash::Hash;
@@ -456,6 +456,28 @@ impl<T> fmt::Display for InconsistentAssumptions<T> {
     }
 }
 
+pub trait BaseKey<T> {
+    fn id<'a>(&self, kb: &FactKB<'a, T>) -> Option<Id<T>>;
+}
+
+impl<T> BaseKey<T> for Id<T> {
+    fn id<'a>(&self, _: &FactKB<'a, T>) -> Option<Id<T>> {
+        Some(*self)
+    }
+}
+
+impl<T> BaseKey<T> for Atom<T> {
+    fn id<'a>(&self, _: &FactKB<'a, T>) -> Option<Id<T>> {
+        Some(*self.id())
+    }
+}
+
+impl<T: Eq + Hash> BaseKey<T> for T {
+    fn id<'a>(&self, kb: &FactKB<'a, T>) -> Option<Id<T>> {
+        kb.rules.defined_facts.get_id_of(self)
+    }
+}
+
 /// A simple propositional knowledge base relying on compiled inference rules.
 pub struct FactKB<'a, T> {
     rules: &'a CheckedRules<T>,
@@ -470,22 +492,28 @@ impl<'a, T> FactKB<'a, T> {
         }
     }
 
-    pub fn get<B: Borrow<Id<T>>>(&self, id: &B) -> Option<FuzzyBool> {
-        self.kb.get(id.borrow()).copied()
+    pub fn get<K: BaseKey<T>>(&self, key: &K) -> Option<FuzzyBool> {
+        let id = key.id(self)?;
+        self.kb.get(&id).copied()
     }
 
     /// Add fact k=v to the knowledge base.
     ///
     /// Returns `true` if the KB was updated, `false` otherwise.
-    pub fn tell<B: Borrow<Id<T>>>(
+    pub fn assume<K: BaseKey<T>>(
         &mut self,
-        id: &B,
+        key: &K,
         truth_value: impl Into<FuzzyBool>,
     ) -> Result<bool, InconsistentAssumptions<T>> {
+        let id = match key.id(self) {
+            Some(x) => x,
+            None => return Ok(false),
+        };
+
         let truth_value = truth_value.into();
         let should_update = self.tell_no_update(id.borrow(), truth_value)?;
         if should_update {
-            self.kb.insert(*id.borrow(), truth_value);
+            self.kb.insert(id, truth_value);
         }
         Ok(should_update)
     }
@@ -495,17 +523,26 @@ impl<'a, T> FactKB<'a, T> {
     /// This is the workhorse, so keep it *fast*.
     pub fn deduce_all_facts(
         &mut self,
-        facts: impl IntoIterator<Item = (Id<T>, FuzzyBool)>,
+        facts: impl IntoIterator<Item = (impl BaseKey<T>, impl Into<FuzzyBool>)>,
+    ) -> Result<(), InconsistentAssumptions<T>> {
+        let mut facts = facts
+            .into_iter()
+            .filter_map(|(a, b)| a.id(self).map(|x| (x, b.into())))
+            .collect();
+
+        self._deduce_all_facts(&mut facts)
+    }
+
+    fn _deduce_all_facts(
+        &mut self,
+        facts: &mut Vec<(Id<T>, FuzzyBool)>,
     ) -> Result<(), InconsistentAssumptions<T>> {
         let mut beta_may_trigger = HashSet::new();
-
-        let mut facts: Vec<_> = facts.into_iter().collect();
-
         let mut to_update = Vec::new();
 
         while !facts.is_empty() {
             for (k, v) in facts.drain(..) {
-                let v = if !self.tell(&k, v)? || v.is_unknown() {
+                let v = if !self.assume(&k, v)? || v.is_unknown() {
                     continue;
                 } else {
                     match v.as_bool() {
@@ -873,18 +910,6 @@ mod tests {
             CheckedRules::try_from(Rules::str_from_str($($x)+).unwrap())
         };
     }
-
-    // macro_rules! vars {
-    //     ($f:ident, $($s:expr),* $(,)?) => {
-    //         [$(Atom::new($f.get_id($s), true)),*]
-    //     };
-    // }
-    //
-    // impl<T: Eq + Hash> CheckedRules<T> {
-    //     fn get_id(&self, x: T) -> Id<T> {
-    //         self.defined_facts.get_id_of(&x).unwrap()
-    //     }
-    // }
 
     #[test]
     fn test_fact_rules_parse() {
