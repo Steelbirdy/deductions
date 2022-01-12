@@ -478,6 +478,12 @@ impl<T: Eq + Hash> BaseKey<T> for T {
     }
 }
 
+impl<'k, T: Eq + Hash> BaseKey<T> for &'k T {
+    fn id<'a>(&self, kb: &FactKB<'a, T>) -> Option<Id<T>> {
+        kb.rules.defined_facts.get_id_of(self)
+    }
+}
+
 /// A simple propositional knowledge base relying on compiled inference rules.
 pub struct FactKB<'a, T> {
     rules: &'a CheckedRules<T>,
@@ -492,7 +498,7 @@ impl<'a, T> FactKB<'a, T> {
         }
     }
 
-    pub fn get<K: BaseKey<T>>(&self, key: &K) -> Option<FuzzyBool> {
+    pub fn get<K: BaseKey<T>>(&self, key: K) -> Option<FuzzyBool> {
         let id = key.id(self)?;
         self.kb.get(&id).copied()
     }
@@ -500,9 +506,9 @@ impl<'a, T> FactKB<'a, T> {
     /// Add fact k=v to the knowledge base.
     ///
     /// Returns `true` if the KB was updated, `false` otherwise.
-    pub fn assume<K: BaseKey<T>>(
+    pub fn tell<K: BaseKey<T>>(
         &mut self,
-        key: &K,
+        key: K,
         truth_value: impl Into<FuzzyBool>,
     ) -> Result<bool, InconsistentAssumptions<T>> {
         let id = match key.id(self) {
@@ -511,17 +517,32 @@ impl<'a, T> FactKB<'a, T> {
         };
 
         let truth_value = truth_value.into();
-        let should_update = self.tell_no_update(id.borrow(), truth_value)?;
+        let should_update = self.tell_no_update(*id.borrow(), truth_value)?;
         if should_update {
             self.kb.insert(id, truth_value);
         }
         Ok(should_update)
     }
 
+    pub fn assume(
+        &mut self,
+        key: impl BaseKey<T>,
+        truth_value: impl Into<FuzzyBool>,
+    ) -> Result<(), InconsistentAssumptions<T>> {
+        let id = match key.id(self) {
+            Some(x) => x,
+            None => return Ok(()),
+        };
+        let truth_value = truth_value.into();
+
+        let mut facts = vec![(id, truth_value)];
+        self._deduce_all_facts(&mut facts)
+    }
+
     /// Update the KB with all the implications of a list of facts.
     ///
     /// This is the workhorse, so keep it *fast*.
-    pub fn deduce_all_facts(
+    pub fn assume_all(
         &mut self,
         facts: impl IntoIterator<Item = (impl BaseKey<T>, impl Into<FuzzyBool>)>,
     ) -> Result<(), InconsistentAssumptions<T>> {
@@ -542,7 +563,7 @@ impl<'a, T> FactKB<'a, T> {
 
         while !facts.is_empty() {
             for (k, v) in facts.drain(..) {
-                let v = if !self.assume(&k, v)? || v.is_unknown() {
+                let v = if !self.tell(k, v)? || v.is_unknown() {
                     continue;
                 } else {
                     match v.as_bool() {
@@ -556,7 +577,7 @@ impl<'a, T> FactKB<'a, T> {
                 if let Some(implies) = self.rules.alpha_rules.get(&atom) {
                     for x in implies {
                         let (id, truth) = x.into_fuzzy_pair();
-                        if self.tell_no_update(&id, truth)? {
+                        if self.tell_no_update(id, truth)? {
                             to_update.push(*x);
                         }
                     }
@@ -578,7 +599,7 @@ impl<'a, T> FactKB<'a, T> {
 
                 if b_cond.args().iter().all(|arg| {
                     let (id, b) = arg.into_fuzzy_pair();
-                    self.get(&id).map_or(false, |a| a.is_same(b))
+                    self.get(id).map_or(false, |a| a.is_same(b))
                 }) {
                     facts.push(b_impl.into_fuzzy_pair());
                 }
@@ -588,7 +609,7 @@ impl<'a, T> FactKB<'a, T> {
         Ok(())
     }
 
-    fn tell_no_update(&self, k: &Id<T>, v: FuzzyBool) -> Result<bool, InconsistentAssumptions<T>> {
+    fn tell_no_update(&self, k: Id<T>, v: FuzzyBool) -> Result<bool, InconsistentAssumptions<T>> {
         match self.get(k) {
             Some(b) if !b.is_unknown() => {
                 if b.is_same(v) {
@@ -596,7 +617,7 @@ impl<'a, T> FactKB<'a, T> {
                 } else {
                     Err(InconsistentAssumptions {
                         kb: format!("{:?}", self),
-                        fact_id: *k,
+                        fact_id: k,
                         value: v,
                     })
                 }
@@ -1004,7 +1025,7 @@ mod tests {
         ($f:ident, [$($a:expr),*] -> [$($b:expr),*]) => {
             {
                 let mut kb = FactKB::new(&$f);
-                kb.deduce_all_facts([$($a),*].map(Atom::into_fuzzy_pair)).unwrap();
+                kb.assume_all([$($a),*].map(Atom::into_fuzzy_pair)).unwrap();
                 assert_fuzzy_eq!(kb.kb, HashMap::from([$($b),*].map(Atom::into_fuzzy_pair)));
             }
         };
@@ -1021,7 +1042,7 @@ mod tests {
             facts: impl IntoIterator<Item = (Id<&'a str>, FuzzyBool)>,
         ) -> Result<HashMap<Id<&'a str>, FuzzyBool>, InconsistentAssumptions<&'a str>> {
             let mut kb = FactKB::new(f);
-            kb.deduce_all_facts(facts)?;
+            kb.assume_all(facts)?;
             Ok(kb.kb)
         }
 
@@ -1129,15 +1150,14 @@ mod tests {
 
         let mut base = FactKB::new(&f);
 
-        base.deduce_all_facts([real, !neg].map(Atom::into_fuzzy_pair))
+        base.assume_all([real, !neg].map(Atom::into_fuzzy_pair))
             .unwrap();
         assert_eq!(
             base.kb,
             HashMap::from([real, !neg].map(Atom::into_fuzzy_pair))
         );
 
-        base.deduce_all_facts([!zero].map(Atom::into_fuzzy_pair))
-            .unwrap();
+        base.assume_all([!zero].map(Atom::into_fuzzy_pair)).unwrap();
         assert_eq!(
             base.kb,
             HashMap::from([real, !neg, !zero, pos].map(Atom::into_fuzzy_pair))

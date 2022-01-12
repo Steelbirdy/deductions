@@ -154,9 +154,9 @@ mod tests {
         let [real, integer, imaginary] = vars!(checked, Real, Integer, Imaginary);
 
         let mut kb = FactKB::new(&checked);
-        kb.deduce_all_facts([real, integer].map(crate::Atom::into_fuzzy_pair))
+        kb.assume_all([real, integer].map(crate::Atom::into_fuzzy_pair))
             .unwrap();
 
-        assert_eq!(kb.get(&imaginary), Some(false.into()));
+        assert_eq!(kb.get(imaginary), Some(false.into()));
     }
 }
