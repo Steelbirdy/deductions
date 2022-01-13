@@ -485,6 +485,7 @@ impl<'k, T: Eq + Hash> BaseKey<T> for &'k T {
 }
 
 /// A simple propositional knowledge base relying on compiled inference rules.
+#[derive(Clone)]
 pub struct FactKB<'a, T> {
     rules: &'a CheckedRules<T>,
     kb: HashMap<Id<T>, FuzzyBool>,
