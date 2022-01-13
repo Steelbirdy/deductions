@@ -2,7 +2,7 @@ use crate::{And, Arena, Atom, FuzzyBool, Id, Logic, Rules};
 use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::str::FromStr;
 
 pub type AlphaImplication<T> = (Atom<T>, Atom<T>);
@@ -502,6 +502,10 @@ impl<'a, T> FactKB<'a, T> {
     pub fn get<K: BaseKey<T>>(&self, key: K) -> Option<FuzzyBool> {
         let id = key.id(self)?;
         self.kb.get(&id).copied()
+    }
+
+    pub fn assumptions(&self) -> impl Iterator<Item = (Id<T>, FuzzyBool)> + '_ {
+        self.kb.iter().map(|(a, b)| (*a, *b))
     }
 
     /// Add fact k=v to the knowledge base.
