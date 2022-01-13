@@ -2,7 +2,7 @@ use crate::{And, Arena, Atom, FuzzyBool, Id, Logic, Rules};
 use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::hash::Hash;
+use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
 pub type AlphaImplication<T> = (Atom<T>, Atom<T>);
@@ -635,6 +635,14 @@ impl<T> fmt::Debug for FactKB<'_, T> {
             writeln!(f, "\t{:?}: {:?},", k, v)?;
         }
         Ok(())
+    }
+}
+
+impl<T> Eq for FactKB<'_, T> {}
+
+impl<T> PartialEq for FactKB<'_, T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.kb.eq(&other.kb)
     }
 }
 
