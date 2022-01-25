@@ -504,8 +504,14 @@ impl<'a, T> FactKB<'a, T> {
         self.kb.get(&id).copied()
     }
 
-    pub fn assumptions(&self) -> impl Iterator<Item = (Id<T>, FuzzyBool)> + '_ {
-        self.kb.iter().map(|(a, b)| (*a, *b))
+    pub fn assumptions(&self) -> impl Iterator<Item = (&T, FuzzyBool)> + '_ {
+        self.kb.iter().map(|(a, b)| {
+            let t = self.rules
+                .defined_facts
+                .get(*a)
+                .unwrap();
+            (t, *b)
+        })
     }
 
     /// Add fact k=v to the knowledge base.
