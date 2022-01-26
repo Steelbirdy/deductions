@@ -433,12 +433,15 @@ impl<T: Eq + Hash> TryFrom<Rules<T>> for CheckedRules<T> {
     }
 }
 
+// TODO: Use something else instead of the ID
 #[derive(Eq, PartialEq)]
 pub struct InconsistentAssumptions<T> {
     kb: String,
     fact_id: Id<T>,
     value: FuzzyBool,
 }
+
+impl<T> std::error::Error for InconsistentAssumptions<T> {}
 
 impl<T> fmt::Debug for InconsistentAssumptions<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -484,6 +487,7 @@ impl<'k, T: Eq + Hash> BaseKey<T> for &'k T {
     }
 }
 
+// TODO: Use a simpler Hasher for this HashMap to prevent unnecessary slowdown
 /// A simple propositional knowledge base relying on compiled inference rules.
 #[derive(Clone)]
 pub struct FactKB<'a, T> {
