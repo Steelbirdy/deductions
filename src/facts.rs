@@ -551,7 +551,7 @@ impl<'a, T> FactKB<'a, T> {
         let truth_value = truth_value.into();
 
         let mut facts = vec![(id, truth_value)];
-        self._deduce_all_facts(&mut facts)
+        self.deduce_all_facts(&mut facts)
     }
 
     /// Update the KB with all the implications of a list of facts.
@@ -566,10 +566,10 @@ impl<'a, T> FactKB<'a, T> {
             .filter_map(|(a, b)| a.id(self).map(|x| (x, b.into())))
             .collect();
 
-        self._deduce_all_facts(&mut facts)
+        self.deduce_all_facts(&mut facts)
     }
 
-    fn _deduce_all_facts(
+    pub fn deduce_all_facts(
         &mut self,
         facts: &mut Vec<(Id<T>, FuzzyBool)>,
     ) -> Result<(), InconsistentAssumptions<T>> {
