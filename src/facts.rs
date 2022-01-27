@@ -508,6 +508,10 @@ impl<'a, T> FactKB<'a, T> {
         self.kb.get(&id).copied()
     }
 
+    pub fn prereqs(&self) -> &AlphaRules<T> {
+        &self.rules.prereqs
+    }
+
     pub fn assumptions(&self) -> impl Iterator<Item = (&T, FuzzyBool)> + '_ {
         self.kb.iter().map(|(a, b)| {
             let t = self.rules
