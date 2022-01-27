@@ -158,5 +158,12 @@ mod tests {
             .unwrap();
 
         assert_eq!(kb.get(imaginary), Some(false.into()));
+
+        // test prerequisites
+        assert!(kb
+            .prereqs(Integer)
+            .unwrap()
+            .find(|x| *x == &Rational)
+            .is_some());
     }
 }

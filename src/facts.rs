@@ -307,7 +307,7 @@ impl<T: Eq + Hash> Prover<T> {
                     // tautology:  a -> a|c|...
                     if b.args().contains(&a) {
                         // Tautology: a -> a|c|...
-                        return
+                        return;
                     }
                 }
 
@@ -328,7 +328,7 @@ impl<T: Eq + Hash> Prover<T> {
             (Logic::And(a), b) => {
                 if a.args().contains(&b) {
                     // Tautology: a & b -> a
-                    return
+                    return;
                 }
 
                 let b = match b {
@@ -346,7 +346,7 @@ impl<T: Eq + Hash> Prover<T> {
             (Logic::Or(a), b) => {
                 if a.args().contains(&b) {
                     // Tautology: a | b -> a
-                    return
+                    return;
                 }
 
                 for a_arg in a.into_args() {
@@ -374,6 +374,7 @@ pub struct CheckedRules<T> {
     alpha_rules: AlphaRules<T>,
     beta_rules: Vec<BetaImplication<T>>,
     beta_triggers: BetaTriggers<T>,
+    // TODO: Make `prereqs` into `HashMap<Id<T>, HashSet<Id<T>>>`
     prereqs: AlphaRules<T>,
 }
 
@@ -399,19 +400,13 @@ impl<T: Eq + Hash> CheckedRules<T> {
         let beta_rules = apply_beta_to_alpha_route(alpha_rules, beta.clone());
 
         // build relations (forward chains)
-        let mut alpha_rules = AlphaRules::new();
-        let mut beta_triggers = BetaTriggers::new();
-
-        for (a, (implies, beta_idxs)) in beta_rules {
-            alpha_rules.insert(a, implies);
-            beta_triggers.insert(a, beta_idxs);
-        }
+        let (alpha_rules, beta_triggers): (AlphaRules<_>, _) = beta_rules
+            .into_iter()
+            .map(|(k, (a, b))| ((k, a), (k, b)))
+            .unzip();
 
         // build prereqs (backward chains)
-        let mut prereqs = AlphaRules::new();
-        for (a, implies) in rules_to_prereqs(alpha_rules.clone()) {
-            prereqs.entry(a).or_default().extend(implies);
-        }
+        let prereqs = rules_to_prereqs(alpha_rules.clone());
 
         Ok(Self {
             defined_facts: facts,
@@ -508,18 +503,19 @@ impl<'a, T> FactKB<'a, T> {
 
     pub fn prereqs<K: BaseKey<T>>(&self, key: K) -> Option<impl Iterator<Item = &T> + '_> {
         let id = key.id(self)?;
-        Some(self.rules.prereqs
-            .get(&id)?
-            .iter()
-            .map(|x| self.rules.defined_facts.get(*x.id()).unwrap()))
+        Some(
+            self.rules
+                .prereqs
+                // keys for prereqs are always true
+                .get(&Atom::new(id, true))?
+                .iter()
+                .map(|x| self.rules.defined_facts.get(*x.id()).unwrap()),
+        )
     }
 
     pub fn assumptions(&self) -> impl Iterator<Item = (&T, FuzzyBool)> + '_ {
         self.kb.iter().map(|(a, b)| {
-            let t = self.rules
-                .defined_facts
-                .get(*a)
-                .unwrap();
+            let t = self.rules.defined_facts.get(*a).unwrap();
             (t, *b)
         })
     }

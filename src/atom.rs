@@ -1,6 +1,5 @@
 use crate::arena::Id;
 use crate::FuzzyBool;
-use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -86,12 +85,6 @@ impl<T> Hash for Atom<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.id.hash(state);
         self.truth_value.hash(state);
-    }
-}
-
-impl<T> Borrow<Id<T>> for Atom<T> {
-    fn borrow(&self) -> &Id<T> {
-        &self.id
     }
 }
 
