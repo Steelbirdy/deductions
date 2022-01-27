@@ -224,9 +224,6 @@ pub fn rules_to_prereqs<T: Eq + Hash>(rules: AlphaRules<T>) -> AlphaRules<T> {
 
 // Rules Prover
 
-/// Prover uses this for reporting detected tautology
-pub struct TautologyDetected<T>(Logic<T>, Logic<T>, &'static str);
-
 /// Prover of logic rules
 ///
 /// Given a set of initial rules, the prover tries to prove all possible rules
@@ -286,10 +283,10 @@ impl<T: Eq + Hash> Prover<T> {
 
         self.rules_seen.insert(rule.clone());
 
-        let _ = self._process_rule(rule);
+        self._process_rule(rule);
     }
 
-    fn _process_rule(&mut self, (a, b): (Logic<T>, Logic<T>)) -> Result<(), TautologyDetected<T>> {
+    fn _process_rule(&mut self, (a, b): (Logic<T>, Logic<T>)) {
         match (a, b) {
             // right part first
 
@@ -309,7 +306,8 @@ impl<T: Eq + Hash> Prover<T> {
                 if matches!(a, Logic::Atom(_)) {
                     // tautology:  a -> a|c|...
                     if b.args().contains(&a) {
-                        return Err(TautologyDetected(a, Logic::Or(b), "a -> a|c|..."));
+                        // Tautology: a -> a|c|...
+                        return
                     }
                 }
 
@@ -329,7 +327,8 @@ impl<T: Eq + Hash> Prover<T> {
             //                 (this will be the basis of the beta-network)
             (Logic::And(a), b) => {
                 if a.args().contains(&b) {
-                    return Err(TautologyDetected(Logic::And(a), b, "a & b -> a"));
+                    // Tautology: a & b -> a
+                    return
                 }
 
                 let b = match b {
@@ -346,7 +345,8 @@ impl<T: Eq + Hash> Prover<T> {
             }
             (Logic::Or(a), b) => {
                 if a.args().contains(&b) {
-                    return Err(TautologyDetected(Logic::Or(a), b, "a | b -> a"));
+                    // Tautology: a | b -> a
+                    return
                 }
 
                 for a_arg in a.into_args() {
@@ -365,8 +365,6 @@ impl<T: Eq + Hash> Prover<T> {
                 unreachable!("filtered out in `process_rule`")
             }
         }
-
-        Ok(())
     }
 }
 
