@@ -562,9 +562,6 @@ impl<'a, T> FactKB<'a, T> {
         self.deduce_all_facts(&mut facts)
     }
 
-    /// Update the KB with all the implications of a list of facts.
-    ///
-    /// This is the workhorse, so keep it *fast*.
     pub fn assume_all(
         &mut self,
         facts: impl IntoIterator<Item = (impl BaseKey<T>, impl Into<FuzzyBool>)>,
@@ -577,7 +574,10 @@ impl<'a, T> FactKB<'a, T> {
         self.deduce_all_facts(&mut facts)
     }
 
-    pub fn deduce_all_facts(
+    /// Update the KB with all the implications of a list of facts.
+    ///
+    /// This is the workhorse, so keep it *fast*.
+    fn deduce_all_facts(
         &mut self,
         facts: &mut Vec<(Id<T>, FuzzyBool)>,
     ) -> Result<(), InconsistentAssumptions<T>> {
