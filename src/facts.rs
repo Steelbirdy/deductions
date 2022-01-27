@@ -508,6 +508,14 @@ impl<'a, T> FactKB<'a, T> {
         self.kb.get(&id).copied()
     }
 
+    pub fn prereqs<K: BaseKey<T>>(&self, key: K) -> Option<impl Iterator<Item = &T> + '_> {
+        let id = key.id(self)?;
+        Some(self.rules.prereqs
+            .get(&id)?
+            .iter()
+            .map(|x| self.rules.defined_facts.get(*x.id()).unwrap()))
+    }
+
     pub fn assumptions(&self) -> impl Iterator<Item = (&T, FuzzyBool)> + '_ {
         self.kb.iter().map(|(a, b)| {
             let t = self.rules
