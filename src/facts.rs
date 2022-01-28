@@ -1,8 +1,10 @@
 use crate::{And, Arena, Atom, FuzzyBool, Id, Logic, Rules};
 use std::borrow::Borrow;
-use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::hash::Hash;
+
+pub type HashSet<T> = ahash::AHashSet<T>;
+pub type HashMap<K, V> = ahash::AHashMap<K, V>;
 
 pub type AlphaImplication<T> = (Atom<T>, Atom<T>);
 pub type AlphaRules<T> = HashMap<Atom<T>, HashSet<Atom<T>>>;
@@ -370,7 +372,6 @@ pub struct CheckedRules<T> {
     alpha_rules: AlphaRules<T>,
     beta_rules: Vec<BetaImplication<T>>,
     beta_triggers: BetaTriggers<T>,
-    // TODO: Make `prereqs` into `HashMap<Id<T>, HashSet<Id<T>>>`
     prereqs: Prerequisites<T>,
 }
 
@@ -665,17 +666,17 @@ mod tests {
 
     macro_rules! alpha_map {
         ($($a:expr => [$($b:expr),* $(,)?]),* $(,)?) => {
-            AlphaRules::from([
-                $(($a, HashSet::from([$($b),*]))),*
-            ])
+            [
+                $(($a, [$($b),*].into_iter().collect::<HashSet<_>>())),*
+            ].into_iter().collect::<AlphaRules<_>>()
         };
     }
 
     macro_rules! prereqs {
         ($($a:expr => [$($b:expr),* $(,)?]),* $(,)?) => {
-            Prerequisites::from([
-                $((*$a.id(), HashSet::from([$(*$b.id()),*]))),*
-            ])
+            [
+                $((*$a.id(), [$(*$b.id()),*].into_iter().collect::<HashSet<_>>())),*
+            ].into_iter().collect::<Prerequisites<_>>()
         };
     }
 
@@ -689,9 +690,9 @@ mod tests {
 
     macro_rules! beta_map {
         ($($a:expr => ({$($b:expr),*}, [$($b_idx:literal),*])),* $(,)?) => {
-            BetaRules::from([
-                $(($a, (HashSet::from([$($b),*]), HashSet::from([$($b_idx),*])))),*
-            ])
+            [
+                $(($a, ([$($b),*].into_iter().collect::<HashSet<_>>(), [$($b_idx),*].into_iter().collect::<HashSet<_>>()))),*
+            ].into_iter().collect::<BetaRules<_>>()
         };
     }
 
@@ -1053,7 +1054,7 @@ mod tests {
             {
                 let mut kb = FactKB::new(&$f);
                 kb.assume_all([$($a),*].map(Atom::into_fuzzy_pair)).unwrap();
-                assert_fuzzy_eq!(kb.kb, HashMap::from([$($b),*].map(Atom::into_fuzzy_pair)));
+                assert_fuzzy_eq!(kb.kb, [$($b),*].into_iter().map(Atom::into_fuzzy_pair).collect::<HashMap<_, _>>());
             }
         };
     }
@@ -1085,7 +1086,9 @@ mod tests {
 
         assert_fuzzy_eq!(
             doit(&f, [(f.get_id("a"), FuzzyBool::Unknown)]).unwrap(),
-            HashMap::from([(f.get_id("a"), FuzzyBool::Unknown)])
+            [(f.get_id("a"), FuzzyBool::Unknown)]
+                .into_iter()
+                .collect::<HashMap<_, _>>()
         );
     }
 
@@ -1181,13 +1184,19 @@ mod tests {
             .unwrap();
         assert_eq!(
             base.kb,
-            HashMap::from([real, !neg].map(Atom::into_fuzzy_pair))
+            [real, !neg]
+                .into_iter()
+                .map(Atom::into_fuzzy_pair)
+                .collect::<HashMap<_, _>>()
         );
 
         base.assume_all([!zero].map(Atom::into_fuzzy_pair)).unwrap();
         assert_eq!(
             base.kb,
-            HashMap::from([real, !neg, !zero, pos].map(Atom::into_fuzzy_pair))
+            [real, !neg, !zero, pos]
+                .into_iter()
+                .map(Atom::into_fuzzy_pair)
+                .collect::<HashMap<_, _>>()
         );
     }
 

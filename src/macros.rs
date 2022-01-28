@@ -160,9 +160,6 @@ mod tests {
         assert_eq!(kb.get(imaginary), Some(false.into()));
 
         // test prerequisites
-        assert!(kb
-            .prereqs(Integer)
-            .unwrap()
-            .any(|x| x == &Rational));
+        assert!(kb.prereqs(Integer).unwrap().any(|x| x == &Rational));
     }
 }
