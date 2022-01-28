@@ -106,7 +106,7 @@ impl<T> Arena<T> {
     }
 
     #[inline]
-    pub fn get(&self, id: Id<T>) -> Option<&T> {
+    pub fn get(&self, id: &Id<T>) -> Option<&T> {
         if self.arena_id != id.arena_id {
             None
         } else {

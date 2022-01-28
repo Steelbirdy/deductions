@@ -3,13 +3,13 @@ use std::borrow::Borrow;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::hash::Hash;
-use std::str::FromStr;
 
 pub type AlphaImplication<T> = (Atom<T>, Atom<T>);
 pub type AlphaRules<T> = HashMap<Atom<T>, HashSet<Atom<T>>>;
 pub type BetaImplication<T> = (And<Atom<T>>, Atom<T>);
 pub type BetaRules<T> = HashMap<Atom<T>, (HashSet<Atom<T>>, HashSet<usize>)>;
 pub type BetaTriggers<T> = HashMap<Atom<T>, HashSet<usize>>;
+pub type Prerequisites<T> = HashMap<Id<T>, HashSet<Id<T>>>;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct Inconsistent;
@@ -108,7 +108,7 @@ pub fn apply_beta_to_alpha_route<T: Eq + Hash>(
     alpha_rules: AlphaRules<T>,
     beta_rules: Vec<BetaImplication<T>>,
 ) -> BetaRules<T> {
-    let mut ret: BetaRules<_> = alpha_rules
+    let mut ret: BetaRules<T> = alpha_rules
         .into_iter()
         .map(|(x, x_impls)| (x, (x_impls, Default::default())))
         .collect();
@@ -130,7 +130,7 @@ pub fn apply_beta_to_alpha_route<T: Eq + Hash>(
                 let (x_impls, _) = ret.get_mut(&x).unwrap();
                 let mut remove_x = x_impls.insert(x);
 
-                // alpha: ... -> a  begta: &(...) -> a      (non-informative)
+                // alpha: ... -> a  beta: &(...) -> a      (non-informative)
                 if !x_impls.contains(b_impl) && b_args.is_subset(x_impls) {
                     x_impls.insert(*b_impl);
 
@@ -206,16 +206,12 @@ pub fn apply_beta_to_alpha_route<T: Eq + Hash>(
 /// Note however that these prerequisites may not be enough to prove a fact.
 /// An example is `a -> b`, where prereq(a) is b, and prereq(b) is a.
 /// That's because a=T -> b=T and b=F -> a=F, but a=F -> b=?
-pub fn rules_to_prereqs<T: Eq + Hash>(rules: AlphaRules<T>) -> AlphaRules<T> {
-    let mut prereqs = AlphaRules::new();
-    let base_fact = |atom: Atom<T>| {
-        let (id, _) = atom.into_pair();
-        Atom::new(id, true)
-    };
+pub fn rules_to_prereqs<T: Eq + Hash>(rules: AlphaRules<T>) -> Prerequisites<T> {
+    let mut prereqs = Prerequisites::new();
+
     for (a, rules) in rules {
-        let a = base_fact(a);
-        for r in rules {
-            let r = base_fact(r);
+        let a = *a.id();
+        for r in rules.into_iter().map(|x| *x.id()) {
             prereqs.entry(r).or_default().insert(a);
         }
     }
@@ -375,7 +371,7 @@ pub struct CheckedRules<T> {
     beta_rules: Vec<BetaImplication<T>>,
     beta_triggers: BetaTriggers<T>,
     // TODO: Make `prereqs` into `HashMap<Id<T>, HashSet<Id<T>>>`
-    prereqs: AlphaRules<T>,
+    prereqs: Prerequisites<T>,
 }
 
 impl<T: Eq + Hash> CheckedRules<T> {
@@ -507,15 +503,15 @@ impl<'a, T> FactKB<'a, T> {
             self.rules
                 .prereqs
                 // keys for prereqs are always true
-                .get(&Atom::new(id, true))?
+                .get(&id)?
                 .iter()
-                .map(|x| self.rules.defined_facts.get(*x.id()).unwrap()),
+                .map(|x| self.rules.defined_facts.get(x).unwrap()),
         )
     }
 
     pub fn assumptions(&self) -> impl Iterator<Item = (&T, FuzzyBool)> + '_ {
         self.kb.iter().map(|(a, b)| {
-            let t = self.rules.defined_facts.get(*a).unwrap();
+            let t = self.rules.defined_facts.get(a).unwrap();
             (t, *b)
         })
     }
@@ -665,11 +661,20 @@ impl<T> PartialEq for FactKB<'_, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
 
     macro_rules! alpha_map {
         ($($a:expr => [$($b:expr),* $(,)?]),* $(,)?) => {
             AlphaRules::from([
                 $(($a, HashSet::from([$($b),*]))),*
+            ])
+        };
+    }
+
+    macro_rules! prereqs {
+        ($($a:expr => [$($b:expr),* $(,)?]),* $(,)?) => {
+            Prerequisites::from([
+                $((*$a.id(), HashSet::from([$(*$b.id()),*]))),*
             ])
         };
     }
@@ -694,7 +699,7 @@ mod tests {
     fn test_deduce_alpha_implications() {
         fn doit<'a>(
             i: impl IntoIterator<Item = AlphaImplication<&'a str>>,
-        ) -> Result<(AlphaRules<&'a str>, AlphaRules<&'a str>), Inconsistent> {
+        ) -> Result<(AlphaRules<&'a str>, Prerequisites<&'a str>), Inconsistent> {
             let i = deduce_alpha_implications(i)?;
             let p = rules_to_prereqs(i.clone());
             Ok((i, p))
@@ -709,7 +714,7 @@ mod tests {
             i,
             alpha_map!(a => [b, c], b => [c], !b => [!a], !c => [!a, !b])
         );
-        assert_eq!(p, alpha_map!(a => [b, c], b => [a, c], c => [a, b]));
+        assert_eq!(p, prereqs!(a => [b, c], b => [a, c], c => [a, b]));
 
         // duplicate entry
         let (i, p) = doit([(a, b), (b, c), (b, c)]).unwrap();
@@ -724,7 +729,7 @@ mod tests {
         );
         assert_eq!(
             p,
-            alpha_map!(
+            prereqs!(
                 a => [b, c],
                 b => [a, c],
                 c => [a, b],
@@ -732,15 +737,12 @@ mod tests {
         );
 
         // cycle tolerance
-        assert_eq!(
-            doit([(a, a), (a, a)]).unwrap(),
-            (alpha_map!(), alpha_map!()),
-        );
+        assert_eq!(doit([(a, a), (a, a)]).unwrap(), (alpha_map!(), prereqs!()),);
         assert_eq!(
             doit([(a, b), (b, a)]).unwrap(),
             (
                 alpha_map!(a => [b], b => [a], !a => [!b], !b => [!a]),
-                alpha_map!(a => [b], b => [a])
+                prereqs!(a => [b], b => [a])
             ),
         );
 
@@ -762,7 +764,7 @@ mod tests {
         );
         assert_eq!(
             p,
-            alpha_map!(
+            prereqs!(
                 a => [b, c],
                 b => [a, c],
                 c => [a, b],
@@ -780,7 +782,7 @@ mod tests {
         );
         assert_eq!(
             p,
-            alpha_map!(
+            prereqs!(
                 a => [b, c],
                 b => [a, c],
                 c => [a, b],
@@ -804,7 +806,7 @@ mod tests {
         );
         assert_eq!(
             p,
-            alpha_map!(
+            prereqs!(
                 a => [b, c, d, e],
                 b => [a, c, d, e],
                 c => [a, b, d, e],
@@ -828,7 +830,7 @@ mod tests {
         );
         assert_eq!(
             p,
-            alpha_map!(
+            prereqs!(
                 rat => [int, real],
                 real => [int, rat],
                 int => [rat, real],
@@ -961,23 +963,23 @@ mod tests {
     fn test_fact_rules_parse() {
         let f = checked_rules!(["a -> b"]).unwrap();
         let [a, b] = vars!(f, "a", "b");
-        assert_eq!(f.prereqs, alpha_map!(b => [a], a => [b]));
+        assert_eq!(f.prereqs, prereqs!(b => [a], a => [b]));
 
         let f = checked_rules!(["a -> !b"]).unwrap();
         let [a, b] = vars!(f, "a", "b");
-        assert_eq!(f.prereqs, alpha_map!(b => [a], a => [b]));
+        assert_eq!(f.prereqs, prereqs!(b => [a], a => [b]));
 
         let f = checked_rules!(["!a -> b"]).unwrap();
         let [a, b] = vars!(f, "a", "b");
-        assert_eq!(f.prereqs, alpha_map!(b => [a], a => [b]));
+        assert_eq!(f.prereqs, prereqs!(b => [a], a => [b]));
 
         let f = checked_rules!(["!a -> !b"]).unwrap();
         let [a, b] = vars!(f, "a", "b");
-        assert_eq!(f.prereqs, alpha_map!(b => [a], a => [b]));
+        assert_eq!(f.prereqs, prereqs!(b => [a], a => [b]));
 
         let f = checked_rules!(["!z == nz"]).unwrap();
         let [z, nz] = vars!(f, "z", "nz");
-        assert_eq!(f.prereqs, alpha_map!(z => [nz], nz => [z]));
+        assert_eq!(f.prereqs, prereqs!(z => [nz], nz => [z]));
 
         #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
         enum IntType {
@@ -1018,7 +1020,7 @@ mod tests {
 
         assert_eq!(
             f.prereqs,
-            alpha_map!(
+            prereqs!(
                 neg => [npos, nzero],
                 pos => [nneg, nzero],
                 zero => [nneg, npos],

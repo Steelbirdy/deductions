@@ -27,11 +27,6 @@ impl<T> Atom<T> {
     }
 
     #[inline]
-    pub(crate) fn into_pair(self) -> (Id<T>, bool) {
-        (self.id, self.truth_value)
-    }
-
-    #[inline]
     pub(crate) fn into_fuzzy_pair(self) -> (Id<T>, FuzzyBool) {
         (self.id, self.truth_value.into())
     }

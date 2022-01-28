@@ -163,7 +163,6 @@ mod tests {
         assert!(kb
             .prereqs(Integer)
             .unwrap()
-            .find(|x| *x == &Rational)
-            .is_some());
+            .any(|x| x == &Rational));
     }
 }
