@@ -10,11 +10,11 @@ pub enum Rule<T> {
 impl<T> Rule<T> {
     /// Converts `a == b` into `a -> b` and `b -> a`
     pub fn into_implications(self) -> impl Iterator<Item = (Logic<T>, Logic<T>)> {
-        let (iter, next) = match self {
-            Self::Implies(a, b) => (std::iter::once((a, b)), None),
-            Self::Equals(a, b) => (std::iter::once((a.clone(), b.clone())), Some((b, a))),
+        let (first, next) = match self {
+            Self::Implies(a, b) => ((a, b), None),
+            Self::Equals(a, b) => ((a.clone(), b.clone()), Some((b, a))),
         };
-        iter.chain(next)
+        std::iter::once(first).chain(next)
     }
 }
 
