@@ -28,8 +28,8 @@ lazy_static::lazy_static! {
 
 #[test]
 fn test_assume_positive() {
-    use Sign::*;
     use FuzzyBool::*;
+    use Sign::*;
 
     let mut kb = FactKB::new(&*SIGN_RULES);
     kb.assume(Pos, true).unwrap();
@@ -44,8 +44,8 @@ fn test_assume_positive() {
 
 #[test]
 fn test_assume_zero() {
-    use Sign::*;
     use FuzzyBool::*;
+    use Sign::*;
 
     let mut kb = FactKB::new(&*SIGN_RULES);
     kb.assume(Zero, true).unwrap();
@@ -60,8 +60,8 @@ fn test_assume_zero() {
 
 #[test]
 fn test_assume_not_zero() {
-    use Sign::*;
     use FuzzyBool::*;
+    use Sign::*;
 
     let mut kb = FactKB::new(&*SIGN_RULES);
     kb.assume(Zero, false).unwrap();
