@@ -151,12 +151,12 @@ mod tests {
 
         let checked = CheckedRules::new(rules).unwrap();
 
-        let [real, integer, imaginary] = vars!(checked, Real, Integer, Imaginary);
-
         let mut kb = FactKB::new(&checked);
-        kb.assume_all([real, integer].map(crate::Atom::into_fuzzy_pair))
-            .unwrap();
+        kb.assume(Integer, true).unwrap();
 
-        assert_eq!(kb.get(imaginary), Some(false.into()));
+        assert_eq!(kb.get(Imaginary), Some(false.into()));
+
+        // test prerequisites
+        assert!(kb.prereqs(Integer).unwrap().any(|x| x == &Rational));
     }
 }
