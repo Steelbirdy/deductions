@@ -1,5 +1,3 @@
-mod simple;
-
 use deductions::{rules, CheckedRules, FactKB, FuzzyBool};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]

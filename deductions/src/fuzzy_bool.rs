@@ -180,6 +180,125 @@ impl FuzzyBool {
         }
     }
 
+    /// Return True if all args are True, Unknown if any of them are None, else False.
+    ///
+    /// If `quick_exit` is True, then return Unknown as soon as a second False is seen.
+    ///
+    /// `fuzzy_group` is like `fuzzy_and` except that it is more conservative in returning False,
+    /// waiting to make sure that all the arguments are True or False and returning Unknown if any
+    /// arguments are Unknown. It also has the capability of permitting only a single False and
+    /// returning Unknown if more than one is seen. For example, the presence of a single transcendental
+    /// number amongst a group of rationals would indicate that the group is no longer rational; but a
+    /// second transcendental in the group would make this determination impossible.
+    ///
+    /// # Examples
+    /// ```
+    /// # use crate::deductions::FuzzyBool;
+    /// # use FuzzyBool::*;
+    /// assert!(FuzzyBool::group([False, False, True], false).is_false());
+    ///
+    /// // If more than one False means the group status is Unknown, then set
+    /// // `quick_exit` to True so Unknown will be returned when the second False is seen:
+    /// assert!(FuzzyBool::group([False, False, True], true).is_unknown());
+    ///
+    /// // But if only a single False is seen then the group is known to be broken:
+    /// assert!(FuzzyBool::group([False, True, True], true).is_false());
+    /// ```
+    pub fn group(args: impl IntoIterator<Item = FuzzyBool>, quick_exit: bool) -> FuzzyBool {
+        let mut saw_other = false;
+
+        let args = args
+            .into_iter()
+            .filter(|b| !b.is_true());
+
+        for arg in args {
+            if arg.is_unknown() || (quick_exit && saw_other) {
+                return FuzzyBool::Unknown;
+            }
+            saw_other = true;
+        }
+        (!saw_other).into()
+    }
+
+    /// Return True if all args are True, False if any arg is False, else Unknown.
+    /// # Examples
+    /// ```
+    /// # use crate::deductions::FuzzyBool;
+    /// # use FuzzyBool::*;
+    /// assert!(FuzzyBool::all([True, True]).is_true());
+    /// assert!(FuzzyBool::all([True, False]).is_false());
+    /// assert!(FuzzyBool::all([True, Unknown]).is_unknown());
+    /// assert!(FuzzyBool::all([False, False]).is_false());
+    /// assert!(FuzzyBool::all([False, Unknown]).is_false());
+    /// assert!(FuzzyBool::all([Unknown, Unknown]).is_unknown());
+    /// ```
+    pub fn all(args: impl IntoIterator<Item = FuzzyBool>) -> FuzzyBool {
+        let mut rv = True;
+        for arg in args {
+            if arg.is_false() {
+                return False;
+            }
+            if rv.is_true() {
+                rv = arg;
+            }
+        }
+        rv
+    }
+
+    /// Return True if any arg is True, False if all args are False, else Unknown.
+    /// # Examples
+    /// ```
+    /// # use crate::deductions::FuzzyBool;
+    /// # use FuzzyBool::*;
+    /// assert!(FuzzyBool::any([True, True]).is_true());
+    /// assert!(FuzzyBool::any([True, False]).is_true());
+    /// assert!(FuzzyBool::any([True, Unknown]).is_true());
+    /// assert!(FuzzyBool::any([False, False]).is_false());
+    /// assert!(FuzzyBool::any([False, Unknown]).is_unknown());
+    /// assert!(FuzzyBool::any([Unknown, Unknown]).is_unknown());
+    /// ```
+    pub fn any(args: impl IntoIterator<Item = FuzzyBool>) -> FuzzyBool {
+        let mut rv = False;
+        for arg in args {
+            if arg.is_true() {
+                return True;
+            }
+            if rv.is_false() {
+                rv = arg;
+            }
+        }
+        rv
+    }
+
+    /// Return None if any arg is Unknown, True if there are an odd number of True
+    /// args, else False.
+    /// # Examples
+    /// ```
+    /// # use crate::deductions::FuzzyBool;
+    /// # use FuzzyBool::*;
+    /// assert!(FuzzyBool::multi_xor([True, True, True]).is_true());
+    /// assert!(FuzzyBool::multi_xor([True, True, False]).is_false());
+    /// assert!(FuzzyBool::multi_xor([True, True, Unknown]).is_unknown());
+    /// assert!(FuzzyBool::multi_xor([True, False, False]).is_true());
+    /// assert!(FuzzyBool::multi_xor([True, False, Unknown]).is_unknown());
+    /// assert!(FuzzyBool::multi_xor([True, Unknown, Unknown]).is_unknown());
+    /// assert!(FuzzyBool::multi_xor([False, False, False]).is_false());
+    /// assert!(FuzzyBool::multi_xor([False, False, Unknown]).is_unknown());
+    /// assert!(FuzzyBool::multi_xor([False, Unknown, Unknown]).is_unknown());
+    /// assert!(FuzzyBool::multi_xor([Unknown, Unknown, Unknown]).is_unknown());
+    /// ```
+    pub fn multi_xor(args: impl IntoIterator<Item = FuzzyBool>) -> FuzzyBool {
+        let mut ret = False;
+        for arg in args {
+            match arg {
+                True => ret = !ret,
+                False => (),
+                Unknown => return Unknown,
+            }
+        }
+        ret
+    }
+
     /// Compares two `FuzzyBool`s similarly to `bool`s, where `true` is greater than `false`.
     ///
     /// `Unknown` values cannot be compared and thus return `None`.
